@@ -239,6 +239,7 @@ Inspired by BeepBox and the BeepBox modding community.</pre>
 <div id=np hidden><div class=npbox><div id=npt class=nph></div><canvas id=npc width=900 height=200></canvas><div id=nps hidden><input id=npr type=range min=0 max=1 step=.01 style=width:100%><div class=hint>Left = freeze the timbre earlier in the note. Fully right = no freeze.</div></div><div class=npf><button id=npreset>Reset</button><button id=nprand>Random</button><span style=flex:1></span><button id=npcancel>Cancel</button><button id=npok>OK</button></div></div></div>
 <div id="player" hidden><div><h2>blipbox</h2><div id="pinfo" style="margin-bottom:14px;color:var(--mut)">Song player</div><button id="pplay" style="font-size:20px;padding:10px 24px">▶ Play</button> <button id="pclose" style="font-size:20px;padding:10px 24px">Close</button></div></div>
 <script>
+const INIT_HASH=location.hash.slice(1);
 let RH=18,SP=16;const GUT=56,MAXB=64,TOP=108,BOT=12;
 const SCALES={Minor:[0,2,3,5,7,8,10],Major:[0,2,4,5,7,9,11],Pentatonic:[0,2,4,7,9],Blues:[0,3,5,6,7,10],Expert:[0,1,2,3,4,5,6,7,8,9,10,11]};
 const NAMES=['C','C#','D','D#','E','F','F#','G','G#','A','A#','B'];
@@ -763,7 +764,7 @@ $('npok').onclick=()=>{const n=NP.n;
   $('np').hidden=true;NP=null;dirty=true;commit()};
 $('npcancel').onclick=()=>{$('np').hidden=true;NP=null};
 /* ---------- song code in the URL ---------- */
-function saveURL(s){try{const code=btoa(unescape(encodeURIComponent(s)));$('scode').value=code;history.replaceState(null,'','#'+code)}catch(e){}}
+function saveURL(s){if(booting)return;let code;try{code=btoa(unescape(encodeURIComponent(s)))}catch(e){return}$('scode').value=code;try{localStorage.setItem('blipbox-song',code)}catch(e){}try{history.replaceState(null,'','#'+code)}catch(e){}}
 function loadCode(code){try{const o=JSON.parse(decodeURIComponent(escape(atob(decodeURIComponent(code.replace(/^#/,'').trim())))));
   if(!Array.isArray(o.ch)||!o.ch.length||!o.bars)return false;o.div=o.div||4;
   stopAll();o.ch=o.ch.map(c=>Object.assign(mk(c.n||'Channel',c.type||'chip'),c));
@@ -1189,8 +1190,13 @@ function drawViz(){const now=performance.now(),mc=$('meter'),sc=$('scope'),cs=ge
       const gain=1/Math.max(.25,pk);g.strokeStyle=v('--c'+S.cur);g.lineWidth=Math.max(1.5,(devicePixelRatio||1)*1.3);g.beginPath();
       for(let i=0;i<1024;i++){const x=i/1023*w,y=h/2-bufM[t0+i]*gain*(h/2-4);if(i)g.lineTo(x,y);else g.moveTo(x,y)}g.stroke()}}}
 [['pMeter','meter'],['pScope','scope']].forEach(([id,k])=>{$(id).onchange=e=>{PREF[k]=e.target.checked;savePrefs();$(k).hidden=!PREF[k]}});
+let booting=true;
 newSong();commit();applyPrefs();$('wrap').scrollTop=(TOP-84)*RH;
-if(location.hash.length>1&&loadCode(location.hash.slice(1)))commit();
+let loaded=false;
+if(INIT_HASH.length>1)loaded=loadCode(INIT_HASH);
+if(!loaded){try{const ls=localStorage.getItem('blipbox-song');if(ls)loaded=loadCode(ls)}catch(e){}}
+booting=false;if(loaded)commit();else saveURL(snap());
+addEventListener('hashchange',()=>{const h=location.hash.slice(1);if(h.length>1&&loadCode(h))commit()});
 frame();
 </script>
 </body>
