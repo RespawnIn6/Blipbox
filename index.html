@@ -398,11 +398,12 @@ function rows(){
 function size(){
   CW=Math.max(14,Math.min(60,Math.floor(($('wrap').clientWidth-GUT-2)/SP)));
   const w=GUT+SP*CW,h=rows().length*RH,dpr=devicePixelRatio||1;
-  cv.width=w*dpr;cv.height=h*dpr;cv.style.width=w+'px';cv.style.height=h+'px';g2.setTransform(dpr,0,0,dpr,0,0);dirty=true;
+  cv.width=w*dpr;cv.height=h*dpr;cv.style.width=w+'px';cv.style.height=h+'px';g2.setTransform(dpr,0,0,dpr,0,0);dirty=true;try{draw()}catch(e){console.error(e)}
 }
 function notesOf(c){const id=c.seq[S.bar];return id?c.pats[id-1]||[]:[]}
+const FBC={'--row':'#2c2c33','--rowb':'#25252c','--root':'#7d5f3e','--fifth':'#3d6590','--grid':'#1c1c22','--grid4':'#0b0b0f','--ui':'#23232d','--text':'#e8e8f0','--c0':'#22d3ee','--c1':'#e6c619','--c2':'#ff6a2a','--c3':'#b4b4b4','--c4':'#a78bfa','--c5':'#22c55e','--c6':'#ec4899','--c7':'#3b82f6'};
 function draw(){
-  const cs=getComputedStyle(document.documentElement),v=k=>cs.getPropertyValue(k).trim();
+  const cs=getComputedStyle(document.documentElement),v=k=>cs.getPropertyValue(k).trim()||FBC[k]||'#888';
   const R=rows(),W=GUT+SP*CW,H=R.length*RH,dr=cur().type==='drum',idx=new Map(R.map((r,i)=>[r.id,i]));
   g2.clearRect(0,0,W,H);g2.font='10px "DM Sans",sans-serif';g2.textBaseline='middle';
   R.forEach((r,i)=>{
@@ -427,7 +428,7 @@ function frame(){
   if(playing){while(queue.length>1&&queue[1].t<=ctx.currentTime)queue.shift();if(queue.length&&queue[0].t<=ctx.currentTime)h=queue[0]}
   const nb=h?h.b:-1,ns=h?h.s:-1;
   if(playing&&(nb!==head.b||ns!==head.s)){const bc=nb!==head.b;head={b:nb,s:ns};if(bc){$('pinfo').textContent='Bar '+(nb+1)+' / '+S.bars;if(PREF.follow&&!drag&&nb>=0){S.bar=S.a.b=nb;noteSel=null;buildPat()}else markBar(nb)}dirty=true}
-  drawViz();if(dirty){draw();dirty=false}
+  try{drawViz()}catch(e){console.error(e)}if(dirty){dirty=false;try{draw()}catch(e){console.error(e)}}
   requestAnimationFrame(frame);
 }
 function pat(create){
@@ -1190,6 +1191,12 @@ function drawViz(){const now=performance.now(),mc=$('meter'),sc=$('scope'),cs=ge
       const gain=1/Math.max(.25,pk);g.strokeStyle=v('--c'+S.cur);g.lineWidth=Math.max(1.5,(devicePixelRatio||1)*1.3);g.beginPath();
       for(let i=0;i<1024;i++){const x=i/1023*w,y=h/2-bufM[t0+i]*gain*(h/2-4);if(i)g.lineTo(x,y);else g.moveTo(x,y)}g.stroke()}}}
 [['pMeter','meter'],['pScope','scope']].forEach(([id,k])=>{$(id).onchange=e=>{PREF[k]=e.target.checked;savePrefs();$(k).hidden=!PREF[k]}});
+const repaint=()=>{try{size()}catch(e){console.error(e)}};
+try{new ResizeObserver(()=>repaint()).observe($('wrap'))}catch(e){}
+['focus','pageshow','load'].forEach(ev=>addEventListener(ev,repaint));
+document.addEventListener('visibilitychange',()=>{if(!document.hidden)repaint()});
+if(document.fonts&&document.fonts.ready)document.fonts.ready.then(repaint);
+setInterval(()=>{if(!document.hidden){try{draw()}catch(e){}}},1000);
 let booting=true;
 newSong();commit();applyPrefs();$('wrap').scrollTop=(TOP-84)*RH;
 let loaded=false;
