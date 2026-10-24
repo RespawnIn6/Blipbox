@@ -47,10 +47,27 @@ h3{font-size:12px;font-weight:500;color:var(--mut);text-align:center;margin:14px
 .pat{overflow-x:auto}
 .prow{display:flex;gap:2px;margin-bottom:2px}
 .mt{width:30px;padding:2px;font-size:12px}.mt.off{opacity:.45}
-.pc{width:28px;height:28px;padding:0;border-radius:3px;font-weight:700;background:var(--ui);color:var(--col);border:1px solid var(--line)}
-.pc.pl{background:color-mix(in srgb,var(--col) 28%,var(--ui))}
-.pc.mu{opacity:.45}
-.pc.sel{outline:2px solid var(--text);outline-offset:-2px;background:color-mix(in srgb,var(--col) 40%,var(--ui))}
+.pc {
+  width: 28px;
+  min-width: 28px;
+  max-width: 28px;
+  height: 28px;
+  padding: 0;
+  border-radius: 3px;
+  font-weight: 700;
+  background: var(--ui);
+  color: var(--col);
+  border: 1px solid var(--line);
+  flex: none;
+}
+.bn {
+  width: 28px;
+  min-width: 28px;
+  max-width: 28px;
+  height: 28px;
+  flex: none;
+}
+
 .ltrack{position:relative;height:22px;margin:4px 0 8px 58px}
 .loop{position:absolute;top:0;height:20px;border:3px solid var(--acc);border-radius:10px;cursor:grab;touch-action:none}
 .lh{position:absolute;top:-4px;bottom:-4px;width:14px;cursor:ew-resize;border-radius:6px;background:var(--acc);opacity:.35}
@@ -117,7 +134,8 @@ canvas{display:block;touch-action:none;cursor:crosshair}
    <div class="r"><label for="pTheme">Theme</label><select id="pTheme"><option value="auto">System</option><option value="dark">Dark</option><option value="light">Light</option></select></div>
    <div class="r"><label for="pLayout">Layout</label><select id="pLayout"><option value="classic">BeepBox classic</option><option value="wide">Wide: roll on top, two panels</option><option value="compact">Compact: roll on top</option></select></div>
    <div class="r"><label for="pRow">Row height</label><select id="pRow"><option value="14">Small</option><option value="18">Medium</option><option value="24">Large</option></select></div>
-   <div class="chk"><label><input type="checkbox" id="pFollow"> follow playhead</label><label><input type="checkbox" id="pOthers"> show other channels</label><label><input type="checkbox" id="pMeter"> volume meter</label><label><input type="checkbox" id="pScope"> oscilloscope</label></div>
+   <div class="chk"><label><input type="checkbox" id="pFollow"> follow playhead</label><label><input type="checkbox" id="pOthers"> show other channels</label><label><input type="checkbox" id="pRemember"> remember last note</label><label><input type="checkbox" id="pMeter"> volume meter</label><label><input type="checkbox" id="pScope"> oscilloscope</label></div>
+   <div class=hint id=ntinfo style="max-width:none;margin-top:4px"></div><button id=ntreset style="margin-top:4px">Forget remembered note</button>
   </details>
   <details id=sc><summary>Song code (URL)</summary><textarea id=scode rows=4 style=width:100%></textarea><div class=r2><button id=scload>Load code</button><button id=sccopy>Copy code</button></div><div id=scmsg class=hint></div></details>
   <h3>Song settings</h3>
@@ -226,6 +244,12 @@ Q               Channel settings
 ----------------------------------------
 Credits
 ----------------------------------------
+
+Features taken from other mods:
+Volume meter - JummBox
+Osclloscope - UltraBox
+Granular, ring mod - Slarmoo's Box
+Volume pump, spectral gate, eyedropper enevelopes - cy!box
 
 Created by Stefan.
 Built entirely from scratch.
@@ -450,7 +474,7 @@ cv.addEventListener('pointerdown',e=>{
     if(R-px<=ED&&R-px<=px-L){rs={n:hit,side:'r'};cv.setPointerCapture(e.pointerId);return}
     if(px-L<=ED){rs={n:hit,side:'l'};cv.setPointerCapture(e.pointerId);return}
     p.splice(p.indexOf(hit),1);dirty=true;commit();return}
-  drag={s:h.col,l:1,p:h.p};cv.setPointerCapture(e.pointerId);
+  drag={s:h.col,l:(PREF.remember&&cur().type!=='drum')?Math.max(1,Math.min(NOTE_T.l,SP-h.col)):1,p:h.p};cv.setPointerCapture(e.pointerId);
   playNote(cur(),h.p,ctx.currentTime+.01,.25,getIn(cur(),master,CHM));dirty=true;
 });
 cv.addEventListener('pointermove',e=>{
@@ -461,15 +485,16 @@ cv.addEventListener('pointermove',e=>{
   if(selDrag){noteSel.c1=cc;noteSel.r1=Math.max(0,Math.min(rows().length-1,Math.floor((e.clientY-bb.top)/RH)));dirty=true;return}
   if(!drag){cv.style.cursor=hoverEdge(e,bb)?'ew-resize':'crosshair';return}
   if(cur().type==='drum')return;
-  const col=Math.floor((e.clientX-cv.getBoundingClientRect().left-GUT)/CW),l=Math.max(1,Math.min(SP-drag.s,col-drag.s+1));
-  if(l!==drag.l){drag.l=l;dirty=true}
+  const col=Math.floor((e.clientX-cv.getBoundingClientRect().left-GUT)/CW);if(col!==drag.s)drag.moved=true;
+  if(drag.moved){const l=Math.max(1,Math.min(SP-drag.s,col-drag.s+1));if(l!==drag.l){drag.l=l;dirty=true}}
 });
 cv.addEventListener('pointerup',()=>{
   if(kd){keyRelease();return}
-  if(rs){rs=null;dirty=true;commit();return}
+  if(rs){const rn=rs.n;rs=null;rememberNote(rn);dirty=true;commit();return}
   if(selDrag){selDrag=null;return}
-  if(!drag)return;const d=drag,p=pat(true);drag=null;
-  p.splice(0,p.length,...p.filter(n=>!(n.p===d.p&&n.s<d.s+d.l&&d.s<n.s+n.l)),d);dirty=true;commit();
+  if(!drag)return;const d=drag,p=pat(true);drag=null;const mv=d.moved;delete d.moved;
+  if(PREF.remember&&cur().type!=='drum')applyTemplate(d);
+  p.splice(0,p.length,...p.filter(n=>!(n.p===d.p&&n.s<d.s+d.l&&d.s<n.s+n.l)),d);rememberNote(d,PREF.remember&&!mv);dirty=true;commit();
 });
 
 /* ---------- pattern grid ---------- */
@@ -695,11 +720,11 @@ async function renderWav(){
 }
 $('wav').onclick=renderWav;
 /* ---------- preferences ---------- */
-const PREF=Object.assign({theme:'auto',layout:'classic',follow:true,others:true,meter:true,scope:true,rowh:18},(()=>{try{return JSON.parse(localStorage.getItem('blipbox-prefs'))||{}}catch(e){return{}}})());
+const PREF=Object.assign({theme:'auto',layout:'classic',follow:true,others:true,meter:true,scope:true,remember:true,rowh:18},(()=>{try{return JSON.parse(localStorage.getItem('blipbox-prefs'))||{}}catch(e){return{}}})());
 const savePrefs=()=>{try{localStorage.setItem('blipbox-prefs',JSON.stringify(PREF))}catch(e){}};
 function applyPrefs(){const r=document.documentElement;if(PREF.theme==='auto')r.removeAttribute('data-theme');else r.dataset.theme=PREF.theme;
   document.querySelector('.app').dataset.layout=PREF.layout;RH=+PREF.rowh;
-  $('pTheme').value=PREF.theme;$('pLayout').value=PREF.layout;$('pRow').value=PREF.rowh;$('pFollow').checked=PREF.follow;$('pOthers').checked=PREF.others;$('pMeter').checked=PREF.meter;$('pScope').checked=PREF.scope;$('meter').hidden=!PREF.meter;$('scope').hidden=!PREF.scope;size()}
+  $('pTheme').value=PREF.theme;$('pLayout').value=PREF.layout;$('pRow').value=PREF.rowh;$('pFollow').checked=PREF.follow;$('pOthers').checked=PREF.others;$('pMeter').checked=PREF.meter;$('pRemember').checked=PREF.remember;$('pScope').checked=PREF.scope;$('meter').hidden=!PREF.meter;$('scope').hidden=!PREF.scope;size()}
 [['pTheme','theme'],['pLayout','layout'],['pRow','rowh']].forEach(([id,k])=>{$(id).onchange=e=>{PREF[k]=e.target.value;savePrefs();applyPrefs()}});
 [['pFollow','follow'],['pOthers','others']].forEach(([id,k])=>{$(id).onchange=e=>{PREF[k]=e.target.checked;savePrefs();dirty=true}});
 /* ---------- envelopes ---------- */
@@ -729,7 +754,7 @@ function noteFx(n,i){const x=GUT+n.s*CW+1,y=i*RH+1,w=n.l*CW-2,h=RH-2;
   if(n.bend){g2.strokeStyle='#ff66aa';g2.lineWidth=1.5;g2.beginPath();for(let k=0;k<=w;k+=2){const py=y+h/2-(bezY(n.bend,k/w)-.5)*4*RH;if(k)g2.lineTo(x+k,py);else g2.moveTo(x+k,py)}g2.stroke()}}
 let cmN=null;const cm=$('cmenu');
 cv.addEventListener('contextmenu',e=>{e.preventDefault();const h=cell(e);cm.hidden=true;if(!h)return;const p=pat(false),n=p&&p.find(n=>n.p===h.p&&h.col>=n.s&&h.col<n.s+n.l);if(!n)return;cmN=n;cm.style.left=e.clientX+'px';cm.style.top=e.clientY+'px';cm.hidden=false});
-cm.addEventListener('click',e=>{const m=e.target.dataset.m;cm.hidden=true;if(!m||!cmN)return;if(m==='clr'){delete cmN.vc;delete cmN.bend;delete cmN.fz;dirty=true;commit()}else openNP(m,cmN)});
+cm.addEventListener('click',e=>{const m=e.target.dataset.m;cm.hidden=true;if(!m||!cmN)return;if(m==='clr'){delete cmN.vc;delete cmN.bend;delete cmN.fz;rememberNote(cmN);dirty=true;commit()}else openNP(m,cmN)});
 document.addEventListener('pointerdown',e=>{if(!cm.contains(e.target))cm.hidden=true},true);
 const FLAT=()=>[[0,.5],[.33,.5],[.66,.5],[1,.5]];
 let NP=null;const npc=$('npc'),nx=npc.getContext('2d');
@@ -762,7 +787,7 @@ $('npok').onclick=()=>{const n=NP.n;
   if(NP.mode==='vol'){if(NP.vc.every(x=>x>.99))delete n.vc;else n.vc=NP.vc.map(x=>+x.toFixed(2))}
   else if(NP.mode==='bend'){if(NP.bend.every(q=>Math.abs(q[1]-.5)<.01))delete n.bend;else n.bend=NP.bend.map(q=>[+q[0].toFixed(3),+q[1].toFixed(3)])}
   else{if(NP.fz>.99)delete n.fz;else n.fz=NP.fz}
-  $('np').hidden=true;NP=null;dirty=true;commit()};
+  rememberNote(n);$('np').hidden=true;NP=null;dirty=true;commit()};
 $('npcancel').onclick=()=>{$('np').hidden=true;NP=null};
 /* ---------- song code in the URL ---------- */
 function saveURL(s){if(booting)return;let code;try{code=btoa(unescape(encodeURIComponent(s)))}catch(e){return}$('scode').value=code;try{localStorage.setItem('blipbox-song',code)}catch(e){}try{history.replaceState(null,'','#'+code)}catch(e){}}
@@ -1191,6 +1216,14 @@ function drawViz(){const now=performance.now(),mc=$('meter'),sc=$('scope'),cs=ge
       const gain=1/Math.max(.25,pk);g.strokeStyle=v('--c'+S.cur);g.lineWidth=Math.max(1.5,(devicePixelRatio||1)*1.3);g.beginPath();
       for(let i=0;i<1024;i++){const x=i/1023*w,y=h/2-bufM[t0+i]*gain*(h/2-4);if(i)g.lineTo(x,y);else g.moveTo(x,y)}g.stroke()}}}
 [['pMeter','meter'],['pScope','scope']].forEach(([id,k])=>{$(id).onchange=e=>{PREF[k]=e.target.checked;savePrefs();$(k).hidden=!PREF[k]}});
+/* ---------- remember the last note ---------- */
+let NOTE_T={l:1,vc:null,bend:null,fz:null};
+function rememberNote(n,keepLen){if(cur().type==='drum')return;NOTE_T={l:keepLen?NOTE_T.l:n.l,vc:n.vc?n.vc.slice():null,bend:n.bend?clone(n.bend):null,fz:n.fz===undefined?null:n.fz};ntInfo()}
+function applyTemplate(d){if(NOTE_T.vc)d.vc=NOTE_T.vc.slice();if(NOTE_T.bend)d.bend=clone(NOTE_T.bend);if(NOTE_T.fz!==null)d.fz=NOTE_T.fz}
+function ntInfo(){const t=NOTE_T,x=[t.l+(t.l===1?' step':' steps')];if(t.vc)x.push('volume curve');if(t.bend)x.push('pitch bend');if(t.fz!==null)x.push('spectral freeze');
+  $('ntinfo').textContent=PREF.remember?'Next note: '+x.join(', ')+'.':'Remember last note is off: new notes start at 1 step.'}
+$('pRemember').onchange=e=>{PREF.remember=e.target.checked;savePrefs();ntInfo()};
+$('ntreset').onclick=()=>{NOTE_T={l:1,vc:null,bend:null,fz:null};ntInfo()};
 const repaint=()=>{try{size()}catch(e){console.error(e)}};
 try{new ResizeObserver(()=>repaint()).observe($('wrap'))}catch(e){}
 ['focus','pageshow','load'].forEach(ev=>addEventListener(ev,repaint));
@@ -1198,7 +1231,7 @@ document.addEventListener('visibilitychange',()=>{if(!document.hidden)repaint()}
 if(document.fonts&&document.fonts.ready)document.fonts.ready.then(repaint);
 setInterval(()=>{if(!document.hidden){try{draw()}catch(e){}}},1000);
 let booting=true;
-newSong();commit();applyPrefs();$('wrap').scrollTop=(TOP-84)*RH;
+newSong();commit();applyPrefs();ntInfo();$('wrap').scrollTop=(TOP-84)*RH;
 let loaded=false;
 if(INIT_HASH.length>1)loaded=loadCode(INIT_HASH);
 if(!loaded){try{const ls=localStorage.getItem('blipbox-song');if(ls)loaded=loadCode(ls)}catch(e){}}
